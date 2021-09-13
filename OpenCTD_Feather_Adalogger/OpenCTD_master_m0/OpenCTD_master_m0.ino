@@ -17,7 +17,16 @@
 //EC Circuit uses software serial
 #include <SoftwareSerial.h>
 
+//gps og kanskje dato/klokke?
+#include "TinyGPS++.h"
+
 RTC_DS3231 rtc; //define real-time clock
+
+int RX = 2, TX = 3;
+SoftwareSerial ss(RX, TX);
+TinyGPSPlus gps;
+float lat = 0, lon = 0;
+
 
 const int chipSelect = 4; //sets chip select pin for SD card reader
 char datalogFileName[12];
@@ -28,7 +37,7 @@ char datalogFileName[12];
  * ** There is no reason not to use the highest accuracy. This is because the datalogging rate is set by the
    sampling/response frequency of the ec sensor [default = 1 sec] (this is to avoid the case where both sensors send data at the same time). */
 
-#define PRESSURE_SENSOR_RESOLUTION 4096
+#define PRESSURE_SENSOR_RESOLUTION 512
 MS_5803 sensor = MS_5803(PRESSURE_SENSOR_RESOLUTION); // Define pressure sensor.
 
 OneWire oneWire(6); // Define the OneWire port for temperature.
@@ -48,12 +57,12 @@ double pressure_abs; //define absolute pressure variable
 
 //Declare global temperature variables.
 float tempA;
-float tempB;
-float tempC;
+//float tempB;
+//float tempC;
 int tempADelayStartTime; // Define a variable to mark when we requested a temperature mesurement from A so we can wait the required delay before reading the value.
-int tempBDelayStartTime; // Define a variable to mark when we requested a temperature mesurement from B so we can wait the required delay before reading the value.
-int tempCDelayStartTime; // Define a variable to mark when we requested a temperature mesurement from C so we can wait the required delay before reading the value.
-int requiredMesurementDelay = sensors.millisToWaitForConversion(TEMP_SENSOR_RESOLUTION);
+//int tempBDelayStartTime; // Define a variable to mark when we requested a temperature mesurement from B so we can wait the required delay before reading the value.
+//int tempCDelayStartTime; // Define a variable to mark when we requested a temperature mesurement from C so we can wait the required delay before reading the value.
+//int requiredMesurementDelay = sensors.millisToWaitForConversion(TEMP_SENSOR_RESOLUTION);
 
 //Declare global variables for eletrical conductivity
 float EC_float = 0;
@@ -66,13 +75,14 @@ byte string_received = 0; // Whether it received a string from the EC circuit.
 
 
 void setup () {
-
+/*
   // comment the following three lines out for final deployment
 #ifndef ESP8266
   while (!Serial && millis() < 20000); //for Leonardo/Micro/Zero - Wait for a computer to connect via serial or until a 20 second timeout has elapsed (This works because millis() starts counting the mlliseconds since the board turns on)
 #endif
-
+*/
   Serial.begin(9600);
+  //Serial1.begin(9600); // bluetooth
 
   //Initialize SD card reader
   Serial.print("Initializing SD card...");
@@ -108,8 +118,8 @@ void setup () {
 
   if (dataFile) {
     Serial.println("====================================================");
-    Serial.println("Date Time,Pressure,Temp A,Temp B,Temp C,Conductivity");
-    dataFile.println("Date Time,Pressure,Temp A,Temp B,Temp C,Conductivity");
+    Serial.println("Date Time,Pressure,Temp A,Conductivity, GPS");
+    dataFile.println("Date Time,Pressure,Temp A,Conductivity, GPS");
     dataFile.close();
 
   } else {
@@ -136,8 +146,8 @@ void setup () {
   sensors.setResolution(TEMP_SENSOR_RESOLUTION);  // Set the resolution (accuracy) of the temperature sensors.
   sensors.requestTemperatures(); // on the first pass request all temperatures in a blocking way to start the variables with true data.
   tempA = get_temp_c_by_index(0);
-  tempB = get_temp_c_by_index(1);
-  tempC = get_temp_c_by_index(2);
+  //tempB = get_temp_c_by_index(1);
+  //tempC = get_temp_c_by_index(2);
 
   sensors.setWaitForConversion(false);  // Now tell the Dallas Temperature library to not block this script while it's waiting for the temperature mesurement to happen
 
@@ -181,13 +191,21 @@ void loop () {
 
     }
 
-    // Read the temperature sensors.
+    // Read the temperature sensors and GPS
     if (millis() - tempADelayStartTime > requiredMesurementDelay) { // wait for conversion to happen before attempting to read temp probe A's value;
       tempA = get_temp_c_by_index(0);
       sensors.requestTemperaturesByIndex(0);  // request temp sensor A start mesuring so it can be read on the following loop (if enough time elapses).
       tempADelayStartTime = millis();  // mark when we made the request to make sure we wait long enough before reading it.
-    }
+      //sjekk gps:
+      while (ss.available() > 0)
+          if (gps.encode(ss.read()))
 
+      if (millis() > 5000 %% gps.charsProcessed() < 10){
+        Serial.println("GPS error");
+        while (true);
+      }
+    }
+    /*
     if (millis() - tempBDelayStartTime > requiredMesurementDelay) { // wait for conversion to happen before attempting to read temp probe B's value;
       tempB = get_temp_c_by_index(1);
       sensors.requestTemperaturesByIndex(1);  // request temp sensor B start mesuring so it can be read on the following loop (if enough time elapses).
@@ -200,6 +218,7 @@ void loop () {
       sensors.requestTemperaturesByIndex(2);  // request temp sensor C start mesuring so it can be read on the following loop (if enough time elapses).
       tempCDelayStartTime = millis(); // mark when we made the request to make sure we wait long enough before reading it.
     }
+    */
 
     sensor.readSensor(); //read pressure sensor
     pressure_abs = sensor.pressure();
@@ -208,6 +227,19 @@ void loop () {
     char dateTimeString[40];
     get_date_time_string(dateTimeString, now);
 
+    if (gps.location.isUpdated()){
+      lat = gps.location.lat();
+      lon = gps.location.lon();
+      Serial.print("D: "); Serial.print(gps.date.day());
+      Serial.print("M: "); Serial.print(gps.date.month());
+      Serial.print("Y: "); Serial.print(gps.date.year());
+      Serial.print("Time: "); Serial.print(gps.time.value());
+      Serial.print("Sats: "); Serial.println(gps.satellites.value());
+    }
+    
+
+    // check for GPS signal here !
+
     //output readings to serial
     Serial.print(dateTimeString);
     Serial.print(",");
@@ -215,11 +247,17 @@ void loop () {
     Serial.print(",");
     Serial.print(tempA);
     Serial.print(",");
+    /*
     Serial.print(tempB);
     Serial.print(",");
     Serial.print(tempC);
     Serial.print(",");
-    Serial.println(EC);
+    */
+    Serial.print(EC);
+    Serial.print(",");
+    Serial.print(lat);
+    Serial.print(",");
+    Serial.println(lon);
 
     //output readings to data file.
     File dataFile = SD.open(datalogFileName, FILE_WRITE);
@@ -231,11 +269,17 @@ void loop () {
       dataFile.print(",");
       dataFile.print(tempA);
       dataFile.print(",");
+      /*
       dataFile.print(tempB);
       dataFile.print(",");
       dataFile.print(tempC);
       dataFile.print(",");
-      dataFile.println(EC);
+      */
+      dataFile.print(EC);
+      dataFile.print(",");
+      datafile.print(lat);
+      dataFile.print(",");
+      datafile.print(lon);
       dataFile.close();
 
       }
