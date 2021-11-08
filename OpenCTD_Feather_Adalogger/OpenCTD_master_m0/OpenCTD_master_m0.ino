@@ -230,11 +230,6 @@ void loop () {
     if (gps.location.isUpdated()){
       lat = gps.location.lat();
       lon = gps.location.lon();
-      Serial.print("D: "); Serial.print(gps.date.day());
-      Serial.print("M: "); Serial.print(gps.date.month());
-      Serial.print("Y: "); Serial.print(gps.date.year());
-      Serial.print("Time: "); Serial.print(gps.time.value());
-      Serial.print("Sats: "); Serial.println(gps.satellites.value());
     }
     
 
@@ -315,6 +310,15 @@ void get_date_time_string(char* outStr, DateTime date) {
   // outputs the date as a date time string,
   sprintf(outStr, "%02d/%02d/%02d,%02d:%02d:%02d", date.month(), date.day(), date.year(), date.hour(), date.minute(), date.second());
   // Note: If you would like the date & time to be seperate columns chabge the space in the formatting string to a comma - this works because the file type is CSV (Comma Seperated Values)
+}
+
+void get_gps_date_time() {
+   // this is currently only for testing
+   Serial.print("D: "); Serial.print(gps.date.day());
+   Serial.print("M: "); Serial.print(gps.date.month());
+   Serial.print("Y: "); Serial.print(gps.date.year());
+   Serial.print("Time: "); Serial.print(gps.time.value());
+   Serial.print("Sats: "); Serial.println(gps.satellites.value()); // probably not necessary
 }
 
 void SDCardDateTimeCallback(uint16_t* date, uint16_t* time) // This funny function allows the sd-library to set the correct file created & modified dates for all sd card files (As would show up in the file explorer on your computer)
